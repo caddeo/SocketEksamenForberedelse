@@ -7,6 +7,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using ModelLibrary;
 
 namespace SocketConsoleServeren
 {
@@ -14,7 +15,7 @@ namespace SocketConsoleServeren
     {
         private static bool _running;
         private static TcpListener _listener;
-        private static List<TcpClient> _clients = new List<TcpClient>();
+        private static List<ClientHandler> _clients = new List<ClientHandler>();
 
         private static object _clientslock = new object();
 
@@ -49,36 +50,35 @@ namespace SocketConsoleServeren
                 // Lytter til klienten som er connected og tilføjer til listen
                 TcpClient client = _listener.AcceptTcpClient();
 
+                ClientHandler clienthandler = new ClientHandler(client);
+
                 lock(_clientslock)
                 {
-                    _clients.Add(client);
+                    _clients.Add(clienthandler);
                 }
 
                 // Tilføjer klienten til en tråd så at der kan være flere klienter på en gang
                 Thread listenerThread = new Thread(ClientListener);
                 // Sørger for det er en backgroundstråd så den lukker med main tråden 
                 listenerThread.IsBackground = true;
-                listenerThread.Start(client);
+                listenerThread.Start(clienthandler);
             }
         }
 
         private static void ClientListener(object incclient)
         { 
             // Converting the incoming client to a TcpClient
-            TcpClient client = (TcpClient)incclient;
-
-            StreamReader reader = new StreamReader(client.GetStream());
-            StreamWriter writer = new StreamWriter(client.GetStream());
-            writer.AutoFlush = true;
+            ClientHandler client = (ClientHandler)incclient;
+            client.Writer.AutoFlush = true;
 
             Console.WriteLine("User connected successfully");
 
             // Imens serveren er oppe så kør
             while(_running)
             {
-                writer.WriteLine("Skriv \'dir\' eller \'subdir\' efterfulgt af den stig du vil se om eksitere");
+                client.Writer.WriteLine("Skriv \'dir\' eller \'subdir\' efterfulgt af den stig du vil se om eksitere");
                 // Splitter beskeden op. commanden er det første i beskeden og resten er beskeden (message[1] -> message.Count() - 1)
-                var message = reader.ReadLine().Split(' ').ToArray<string>();
+                var message = client.Reader.ReadLine().Split(' ').ToArray<string>();
                 string command = message[0];
 
                 Console.WriteLine(command);
@@ -92,15 +92,15 @@ namespace SocketConsoleServeren
 
                             if (directory.Exists)
                             {
-                                writer.WriteLine("Mappen findes.\n Oprettelses dato for mappen: "+directory.CreationTime.ToString("MM-dd-yyyy"));
+                                client.Writer.WriteLine("Mappen findes.\n Oprettelses dato for mappen: "+directory.CreationTime.ToString("MM-dd-yyyy"));
                             } else
                             {
-                                writer.WriteLine("Mappen findes ikke");
+                                client.Writer.WriteLine("Mappen findes ikke");
                             }
                         }
                         catch (Exception)
                         {
-                            writer.WriteLine("Der skete en fejl - prøv igen");
+                            client.Writer.WriteLine("Der skete en fejl - prøv igen");
                         }
                         break;
                     case "SUBDIR":
@@ -114,22 +114,22 @@ namespace SocketConsoleServeren
 
                                 foreach(var dirinfo in subdirectories)
                                 {
-                                    writer.WriteLine(dirinfo.Name + " - " + dirinfo.CreationTime.ToString("MM-dd-yyy"));
+                                    client.Writer.WriteLine(" >"+dirinfo.Name + " - " + dirinfo.CreationTime.ToString("MM-dd-yyy"));
                                 }
                             } else
                             {
-                                writer.WriteLine("Mappen findes ikke");
+                                client.Writer.WriteLine("Mappen findes ikke");
                             }
                         }
                         catch (Exception)
                         {
-                            writer.WriteLine("Der skete en fejl - prøv igen");
+                            client.Writer.WriteLine("Der skete en fejl - prøv igen");
                         }
 
                         break;
                     default:
                         // error
-                        writer.WriteLine("Kommando ikke genkendt");
+                        client.Writer.WriteLine("Kommando ikke genkendt");
                         break;
                 }
             }
